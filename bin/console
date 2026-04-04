@@ -1,0 +1,20 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require "auditron"
+
+# You can add fixtures and/or initialization code here to make experimenting
+# with your gem easier. You can also use a different console, if you like.
+Auditron.configure do |config|
+  config.current_actor  = -> { nil }
+  config.ignored_fields = %i[updated_at created_at]
+  config.store_ip       = false
+  config.retention_days = nil
+end
+
+puts "Auditron #{Auditron::VERSION} console ready."
+puts "Try: Auditron.config, Auditron::AuditLog, Auditron::Sweeper"
+
+require "irb"
+IRB.start(__FILE__)

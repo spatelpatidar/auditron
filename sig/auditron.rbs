@@ -1,0 +1,44 @@
+module Auditron
+  VERSION: String
+  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+
+  def self.configure: () { (Configuration) -> void } -> void
+  def self.config: () -> Configuration
+
+  self.current_request: untyped
+
+  class Configuration
+    attr_accessor current_actor: Proc
+    attr_accessor ignored_fields: Array[Symbol]
+    attr_accessor store_ip: bool
+    attr_accessor retention_days: Integer?
+
+    def initialize: () -> void
+  end
+
+  module Auditable
+    module ClassMethods
+      def auditable: (?only: Array[Symbol]?, ?except: Array[Symbol]?) -> void
+    end
+  end
+
+  class AuditLog < ActiveRecord::Base
+    def self.for: (untyped record) -> ActiveRecord::Relation
+    def self.by: (untyped actor) -> ActiveRecord::Relation
+    def self.action: (Symbol | String action) -> ActiveRecord::Relation
+    def self.since: (Time time) -> ActiveRecord::Relation
+    def changed_fields: () -> Hash[String, untyped]
+  end
+
+  module Sweeper
+    def self.purge!: () -> Integer
+  end
+
+  class Railtie < Rails::Railtie
+  end
+
+  class RequestMiddleware
+    def initialize: (untyped app) -> void
+    def call: (untyped env) -> untyped
+  end
+end
