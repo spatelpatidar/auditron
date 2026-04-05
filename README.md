@@ -1,44 +1,39 @@
 # Auditron
 
-> Lightweight, diff-only audit logging for ActiveRecord models.
+> Audit logging for API-first Rails apps — built-in retention, flexible actor tracking, and a clean query DSL.
 
 ---
 
 ## Why Auditron?
 
-You shipped your Rails API. Users are complaining that their data changed without explanation.
-Your manager wants a compliance report. Your security team needs to know who deleted that record.
+Most audit gems were built for traditional Rails apps with session-based auth.
+If you are building an API with JWT, service objects, or background jobs — they
+get in your way fast.
 
-**You have no idea. Because you never tracked it.**
+`paper_trail` stores full object snapshots on every change. Change one column
+on a model with 30 attributes and it writes all 30 to the database, every time.
+At scale, this becomes a serious storage problem.
 
-Most developers reach for `paper_trail` at this point. It works — but it stores a **full snapshot
-of every object on every change**. Change one column on a User with 30 attributes? paper_trail
-writes all 30 to the database. Do that a thousand times a day and you have a serious DB bloat problem.
+`audited` and `paper_trail` both assume controller-based actor tracking tied to
+`current_user` — which does not exist in JWT or service-layer contexts.
 
-`audited` is the other popular choice. But its actor system is clunky, it has no built-in log
-retention, and customization always feels like fighting the gem.
+Neither gem ships with log retention. You always end up writing your own cleanup job.
 
-`logidze` is great — if you're on PostgreSQL. MySQL or SQLite users are out of luck.
+**Auditron was designed for how modern Rails APIs are actually built:**
 
-**Auditron was built to fix all of this:**
-
-| Problem | How Auditron solves it |
-|---------|----------------------|
-| DB bloat from full snapshots | Stores **only changed fields** — `{ email: ["old", "new"] }` |
-| Clunky actor wiring | One line in your controller — works with any auth system |
-| No log cleanup | Built-in retention: `config.retention_days = 90` |
-| PostgreSQL lock-in | Works with PostgreSQL, MySQL, and SQLite |
-| No query interface | Chainable DSL: `AuditLog.by(admin).action(:deleted).since(1.week.ago)` |
-| Too many dependencies | Only hard dependency is `activerecord` |
+- JWT and service-layer friendly — set the actor anywhere, not just in controllers
+- Diff-only storage — stores only what changed, not the full object
+- Built-in retention — configure once, run a job, logs clean themselves up
+- Chainable query DSL — find exactly what you need without writing raw SQL
 
 ---
 
 ## Who needs this?
 
-- Any SaaS app that needs to answer **"who changed this, and when?"**
-- Apps under **GDPR, HIPAA, or SOC2** compliance requirements
-- Teams that want audit trails without the overhead of a full versioning system
-- APIs built with [Respondo](https://github.com/shailendrapatidar/respondo) that want request + change tracking
+- API-first Rails apps using JWT or token-based auth
+- Apps under **GDPR, HIPAA, or SOC2** compliance requirements that need audit trails
+- Teams tired of paper_trail bloating their database
+- Apps that need to answer **"who changed this, when, and why?"**
 
 ---
 
@@ -117,7 +112,7 @@ end
 ## Controller Setup
 
 Auditron needs to know who is making changes. Set the current actor
-in your `ApplicationController` — works with **any auth system**.
+in your controller after authentication — works with **any auth system**.
 
 Auditron stores it in a **thread-safe variable** and clears it
 automatically after every request. Safe for Puma and any threaded server.
@@ -133,7 +128,7 @@ class ApplicationController < ActionController::API
     payload = JsonAuthToken.decode(token)
     @current_user = Account.find_by(id: payload[:account_id])
 
-    render_unauthorized(message: "Invalid token") and return unless @current_user
+    render json: { error: "Invalid token" }, status: :unauthorized and return unless @current_user
 
     # Set the actor — Auditron reads this on every model change
     Auditron.current_actor = @current_user
@@ -173,11 +168,13 @@ class ApplicationController < ActionController::Base
 end
 ```
 
-### No actor (background jobs, rake tasks, seeds)
+### Service objects or background jobs
 
 ```ruby
-# Actor will be nil — Auditron handles this gracefully
-# actor_type: nil, actor_id: nil in the log entry
+# Set and clear manually — Auditron does not clear this automatically
+# outside of a request cycle
+Auditron.current_actor = admin_user
+account.update!(status: "suspended")
 Auditron.current_actor = nil
 ```
 
@@ -283,7 +280,8 @@ log.summary
 
 ## Log retention (Sweeper)
 
-Auto-purge old logs using a scheduled job:
+No other major audit gem ships with built-in log retention.
+Configure once and run from any scheduled job:
 
 ```ruby
 # config/initializers/auditron.rb
@@ -342,16 +340,38 @@ Every `AuditLog` record contains:
 
 ## How it compares
 
-| Feature | Auditron | paper_trail | audited | logidze |
-|---------|----------|-------------|---------|---------|
-| Diff-only storage | ✅ | ❌ full snapshots | ✅ | ✅ |
-| MySQL support | ✅ | ✅ | ✅ | ❌ |
-| SQLite support | ✅ | ✅ | ✅ | ❌ |
+This is an honest comparison. Every gem has strengths — pick the right tool for your use case.
+
+| Feature | Auditron | PaperTrail | Audited | Logidze |
+|---------|----------|------------|---------|---------|
+| Storage model | Diff only | Full snapshot | Diff (changes) | Diff (JSONB) |
+| PostgreSQL | ✅ | ✅ | ✅ | ✅ |
+| MySQL | ✅ | ✅ | ✅ | ❌ |
+| SQLite | ✅ | ✅ | ✅ | ❌ |
 | Built-in retention | ✅ | ❌ | ❌ | ❌ |
-| Chainable query DSL | ✅ | ❌ | ❌ | ❌ |
-| Custom metadata | ✅ | ❌ | ❌ | ❌ |
-| Simple actor config | ✅ | ⚠️ | ⚠️ | ✅ |
-| Rails required | ❌ | ✅ | ✅ | ✅ |
+| Custom metadata | ✅ clean DSL | ⚠️ via `meta` config | ⚠️ limited | ❌ |
+| Actor tracking | Thread-local, set anywhere | `whodunnit` (controller) | `current_user` (controller) | Custom |
+| JWT / API friendly | ✅ | ⚠️ needs workaround | ⚠️ needs workaround | ⚠️ moderate |
+| Background job support | ✅ set manually | ⚠️ manual wiring | ⚠️ manual wiring | ⚠️ manual |
+| Chainable query DSL | ✅ | ❌ raw AR queries | ❌ raw AR queries | ❌ raw JSON ops |
+| Rails required | ⚠️ ActiveRecord required | ✅ Rails required | ✅ Rails required | ✅ Rails required |
+| Performance (large data) | ⚠️ unverified | ❌ heavy (full snapshots) | ⚠️ medium | ✅ optimized (JSONB) |
+| Maturity | 🆕 new | ✅ battle-tested | ✅ battle-tested | ✅ stable |
+
+**When to choose Auditron:**
+- You are building an API-first app with JWT or token-based auth
+- You need built-in log retention without writing your own cleanup
+- You want a clean query DSL instead of raw ActiveRecord queries
+- You set the actor from service objects or background jobs
+
+**When to choose PaperTrail:**
+- You need full version history and the ability to revert records
+- You are on a traditional session-based Rails app
+- You need a battle-tested, widely supported gem
+
+**When to choose Logidze:**
+- You are on PostgreSQL and need maximum query performance
+- You want diff storage backed by native JSONB operations
 
 ---
 
@@ -359,7 +379,7 @@ Every `AuditLog` record contains:
 
 - Ruby `>= 3.0`
 - ActiveRecord `>= 7.0`
-- Rails `>= 7.0` (optional — works without Rails)
+- Rails `>= 7.0` (optional — works with ActiveRecord outside Rails)
 - PostgreSQL, MySQL, SQLite
 
 ---
