@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.1] - 2026-04-08
+
+### Fixed
+
+- **Migration version hardcoded to `[7.0]`** — the generated `create_audit_logs`
+  migration previously always inherited from `ActiveRecord::Migration[7.0]`
+  regardless of the host application's Rails version. Running
+  `rails generate auditron:install` on a Rails 7.1, 7.2, or 8.0 app would
+  generate an incorrect migration class header.
+
+  The generator now reads `ActiveRecord::VERSION::MAJOR` and
+  `ActiveRecord::VERSION::MINOR` at generation time and injects the correct
+  version bracket automatically:
+
+  ```ruby
+  # Before (hardcoded — wrong on Rails 7.1+)
+  class CreateAuditLogs < ActiveRecord::Migration[7.0]
+
+  # After (dynamic — always matches the host app)
+  class CreateAuditLogs < ActiveRecord::Migration[7.1]   # on Rails 7.1
+  class CreateAuditLogs < ActiveRecord::Migration[7.2]   # on Rails 7.2
+  class CreateAuditLogs < ActiveRecord::Migration[8.0]   # on Rails 8.0
+  ```
+
+- **`ArgumentError: wrong number of arguments (given 3, expected 0)`** on
+  `rails generate auditron:install` when running Rails 7.1+.
+
+  Rails 7.1 removed the third positional options hash from `migration_template`.
+  Passing `migration_version:` as a keyword argument to `migration_template`
+  caused an `ArgumentError` crash immediately after the user confirmed
+  installation — no files were created.
+
+  The generator now sets `@migration_version` as an instance variable before
+  calling `migration_template`, which makes it available inside the ERB
+  template directly. This approach is compatible with Rails 6.0 through 8.x.
+
+### Compatibility
+
+This release is fully backwards-compatible. No changes to public API,
+configuration, model DSL, or query interface.
+
+---
+
 ## [1.0.0] - 2026-04-04
 
 ### Added
@@ -61,7 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Compatibility
 
-- Ruby `>= 3.0`
-- ActiveRecord `>= 7.0`
-- Rails `>= 7.0` (optional)
-- PostgreSQL, MySQL, SQLite
+| Version | Ruby    | ActiveRecord | Rails         | Databases                  |
+|---------|---------|--------------|---------------|----------------------------|
+| 1.0.1   | >= 3.0  | >= 7.0       | >= 7.0 (opt.) | PostgreSQL, MySQL, SQLite  |
+| 1.0.0   | >= 3.0  | >= 7.0       | >= 7.0 (opt.) | PostgreSQL, MySQL, SQLite  |

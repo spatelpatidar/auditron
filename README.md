@@ -1,5 +1,8 @@
 # Auditron
 
+
+[![Gem Version](https://badge.fury.io/rb/auditron.svg?icon=si%3Arubygems&icon_color=%23ce0303)](https://badge.fury.io/rb/auditron)
+![GitHub Repo Views](https://gitviews.com/repo/spatelpatidar/auditron.svg)
 > Audit logging for API-first Rails apps — built-in retention, flexible actor tracking, and a clean query DSL.
 
 ---

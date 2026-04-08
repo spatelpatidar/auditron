@@ -17,6 +17,13 @@ module Auditron
 
         say ""
         say "  Creating migration...", :cyan
+
+        # Set migration version as instance variable so the ERB template
+        # can read it via @migration_version.
+        # This is required for Rails 7.1+ where migration_template no longer
+        # accepts a third options hash argument.
+        @migration_version = migration_version
+
         migration_template(
           "create_audit_logs.rb.erb",
           "db/migrate/create_audit_logs.rb"
@@ -115,6 +122,13 @@ module Auditron
         say "  [CANCELLED]  Installation cancelled.", :red
         say "  Run 'rails generate auditron:install' again when ready.", :yellow
         say ""
+      end
+
+      # Returns the Rails migration version bracket e.g. "[7.1]" or "[8.0]".
+      # Uses the host app's actual ActiveRecord version so the migration class
+      # always inherits from the correct base version.
+      def migration_version
+        "[#{ActiveRecord::VERSION::MAJOR}.#{ActiveRecord::VERSION::MINOR}]"
       end
     end
   end
