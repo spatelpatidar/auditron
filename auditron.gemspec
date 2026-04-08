@@ -31,13 +31,13 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rspec-rails",  "~> 6.0"
   spec.add_development_dependency "rubocop",      "~> 1.0"
   spec.add_development_dependency "rubocop-rspec","~> 2.0"
-  spec.add_development_dependency 'simplecov', '~> 0.22'
+  spec.add_development_dependency "simplecov", "~> 0.22"
 
   spec.metadata = {
-    "homepage_uri"      => spec.homepage,
-    "source_code_uri"   => "https://github.com/spatelpatidar/auditron",
-    "changelog_uri"     => "https://github.com/spatelpatidar/auditron/blob/main/CHANGELOG.md",
-    "bug_tracker_uri"   => "https://github.com/spatelpatidar/auditron/issues",
+    "homepage_uri" => spec.homepage,
+    "source_code_uri" => spec.homepage,
+    "changelog_uri" => "#{spec.homepage}/blob/main/CHANGELOG.md",
+    "bug_tracker_uri" => "#{spec.homepage}/auditron/issues",
     "rubygems_mfa_required" => "true"
   }
 

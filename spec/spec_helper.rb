@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require 'simplecov'
+require "simplecov"
 SimpleCov.start do
-  add_filter '/spec/'
-  add_filter 'lib/respondo/version.rb'
-  add_filter 'lib/respondo/railtie.rb'
-  track_files 'lib/**/*.rb'
+  add_filter "/spec/"
+  add_filter "lib/respondo/version.rb"
+  add_filter "lib/respondo/railtie.rb"
+  track_files "lib/**/*.rb"
 end
 
 require "auditron"
