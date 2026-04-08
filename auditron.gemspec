@@ -5,7 +5,7 @@ require_relative "lib/auditron/version"
 Gem::Specification.new do |spec|
   spec.name        = "auditron"
   spec.version     = Auditron::VERSION
-  spec.authors     = ["Shailendra Patidar"]
+  spec.authors     = ["Shailendra Kumar"]
   spec.email       = ["shailendrapatidar00@gmail.com"]
 
   spec.summary     = "Lightweight, diff-only audit logging for ActiveRecord models."
