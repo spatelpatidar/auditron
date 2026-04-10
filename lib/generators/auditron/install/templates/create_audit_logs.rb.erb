@@ -8,6 +8,11 @@
 
 class CreateAuditLogs < ActiveRecord::Migration<%= @migration_version %>
   def change
+    # Detect database adapter to use correct JSON column type
+    # PostgreSQL supports jsonb (faster, indexable)
+    # MySQL and SQLite use json
+    json_type = postgresql? ? :jsonb : :json
+
     create_table :audit_logs do |t|
       # ── The record being audited (polymorphic) ──────────────────────────
       t.string  :auditable_type, null: false
@@ -19,7 +24,7 @@ class CreateAuditLogs < ActiveRecord::Migration<%= @migration_version %>
 
       # ── What changed (JSON serialised diff) ─────────────────────────────
       # Stores before/after values: { "email": ["old@x.com", "new@x.com"] }
-      t.text    :changed_fields
+      t.column  :changed_fields, json_type
 
       # ── Who did it (polymorphic actor, e.g. User, AdminUser) ─────────────
       t.string  :actor_type
@@ -27,7 +32,7 @@ class CreateAuditLogs < ActiveRecord::Migration<%= @migration_version %>
 
       # ── Request context ───────────────────────────────────────────────────
       t.string  :ip_address
-      t.text    :metadata
+      t.column  :metadata,       json_type
 
       # ── Timestamp (no updated_at — audit logs are immutable) ─────────────
       t.datetime :created_at, null: false
@@ -49,5 +54,17 @@ class CreateAuditLogs < ActiveRecord::Migration<%= @migration_version %>
     # Time-range queries and retention cleanup
     add_index :audit_logs, :created_at,
               name: "idx_audit_logs_on_created_at"
+
+    # GIN index only available on PostgreSQL with jsonb
+    if postgresql?
+      add_index :audit_logs, :changed_fields, using: :gin
+      add_index :audit_logs, :metadata,       using: :gin
+    end
+  end
+
+  private
+
+  def postgresql?
+    ActiveRecord::Base.connection.adapter_name.downcase.include?("postgresql")
   end
 end

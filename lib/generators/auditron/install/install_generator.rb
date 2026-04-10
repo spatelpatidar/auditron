@@ -11,124 +11,268 @@ module Auditron
       source_root File.expand_path("templates", __dir__)
 
       def install
-        display_banner
-        display_intro
+        print_logo
+        print_intro
         return cancel_install unless confirm_install?
 
-        say ""
-        say "  Creating migration...", :cyan
+        # ── Step 1: Migration ────────────────────────────────────────────────
+        puts_out ""
+        puts_out cyan("  ┌─ Step 1: Migration ──────────────────────────────────────────────┐")
+        puts_out ""
+        puts_out "  \e[37mCreating audit_logs migration...\e[0m"
+        puts_out ""
 
-        # Set migration version as instance variable so the ERB template
-        # can read it via @migration_version.
-        # This is required for Rails 7.1+ where migration_template no longer
-        # accepts a third options hash argument.
         @migration_version = migration_version
-
         migration_template(
           "create_audit_logs.rb.erb",
           "db/migrate/create_audit_logs.rb"
         )
-        say ""
 
-        display_initializer_hint
-        display_success
+        # ── Step 2: Initializer ──────────────────────────────────────────────
+        puts_out ""
+        puts_out cyan("  ┌─ Step 2: Initializer ────────────────────────────────────────────┐")
+        puts_out ""
+
+        @cfg = {}
+        collect_ignored_fields
+        collect_store_ip
+        collect_retention_days
+        collect_actor_method
+
+        write_initializer
+
+        print_next_steps
+        print_done
       end
 
       private
 
-      def display_banner
-        say ""
-        say "  +===================================================+", :cyan
-        say "  |                                                   |", :cyan
-        say "  |       AUDITRON  --  Audit Logging Gem             |", :cyan
-        say "  |                    v#{Auditron::VERSION.ljust(6)}                        |", :cyan
-        say "  |                                                   |", :cyan
-        say "  +===================================================+", :cyan
-        say ""
+      # =========================================================================
+      # Interactive config collection
+      # =========================================================================
+
+      def collect_ignored_fields
+        puts_out "  \e[37mIgnored fields\e[0m"
+        puts_out "  \e[33m  (Comma-separated field names to exclude from change tracking)\e[0m"
+        puts_out "  \e[33m  (Press Enter to use default: updated_at, created_at)\e[0m"
+        print_out "  \e[36m›\e[0m \e[33m[updated_at, created_at]\e[0m: "
+
+        raw = $stdin.gets.to_s.strip
+        if raw.empty?
+          @cfg[:ignored_fields] = %i[updated_at created_at]
+        else
+          @cfg[:ignored_fields] = raw.split(",").map { |f| f.strip.to_sym }
+        end
+        puts_out ""
       end
 
-      def display_intro
-        say "  Auditron will set up audit logging for your Rails app.", :white
-        say ""
-        say "  This installer will:", :white
-        say ""
-        say "    [+]  Create the audit_logs migration", :green
-        say "    [+]  Add indexes for fast querying", :green
-        say "    [+]  Track: auditable, actor, action, changed fields, IP", :green
-        say ""
-        say "  ---------------------------------------------------", :cyan
-        say ""
-        say "  After install, add to any model:", :yellow
-        say ""
-        say "    class User < ApplicationRecord", :white
-        say "      auditable only: [:email, :role, :status]", :green
-        say "    end", :white
-        say ""
-        say "  ---------------------------------------------------", :cyan
-        say ""
+      def collect_store_ip
+        puts_out "  \e[37mStore IP address\e[0m"
+        puts_out "  \e[33m  (When true, the actor's IP is saved on every audit log)\e[0m"
+        print_out "  \e[36m  Store IP in audit logs? (y/n)\e[0m "
+
+        answer = $stdin.gets.to_s.strip.downcase
+        @cfg[:store_ip] = answer.start_with?("y")
+        puts_out ""
       end
+
+      def collect_retention_days
+        puts_out "  \e[37mRetention period\e[0m"
+        puts_out "  \e[33m  (Auto-delete audit logs older than N days. Press Enter to keep forever)\e[0m"
+        print_out "  \e[36m›\e[0m \e[33m[nil — keep forever]\e[0m: "
+
+        raw = $stdin.gets.to_s.strip
+        @cfg[:retention_days] = raw.empty? ? nil : raw.to_i
+        puts_out ""
+      end
+
+      def collect_actor_method
+        puts_out "  \e[37mCurrent actor method\e[0m"
+        puts_out "  \e[33m  (The controller method / variable that returns the logged-in user)\e[0m"
+        print_out "  \e[36m›\e[0m \e[33m[current_user]\e[0m: "
+
+        raw = $stdin.gets.to_s.strip
+        @cfg[:actor_method] = raw.empty? ? "current_user" : raw
+        puts_out ""
+      end
+
+      # =========================================================================
+      # Write initializer
+      # =========================================================================
+
+      def write_initializer
+        dir  = File.join(destination_root, "config", "initializers")
+        path = File.join(dir, "auditron.rb")
+        FileUtils.mkdir_p(dir)
+        File.write(path, build_initializer_content)
+        puts_out "\e[32m  ✅  Created config/initializers/auditron.rb\e[0m"
+        puts_out ""
+      end
+
+      def build_initializer_content
+        ignored = @cfg[:ignored_fields].map { |f| ":#{f}" }.join(", ")
+        retention = @cfg[:retention_days].nil? ? "nil" : @cfg[:retention_days].to_s
+
+        b = Lines.new
+        b << "# frozen_string_literal: true"
+        b << ""
+        b << "# Auditron configuration"
+        b << "# Generated by: rails generate auditron:install"
+        b << "# Auditron version: #{Auditron::VERSION}"
+        b << ""
+        b << "Auditron.configure do |config|"
+        b << ""
+        b << "  # ── Ignored Fields ───────────────────────────────────────────────────"
+        b << "  # Fields excluded from change tracking across all auditable models."
+        b << "  config.ignored_fields = [#{ignored}]"
+        b << ""
+        b << "  # ── IP Tracking ──────────────────────────────────────────────────────"
+        b << "  # When true, the actor's remote IP is stored on every audit log."
+        b << "  config.store_ip = #{@cfg[:store_ip]}"
+        b << ""
+        b << "  # ── Retention ────────────────────────────────────────────────────────"
+        b << "  # Auto-purge logs older than this many days. nil = keep forever."
+        b << "  config.retention_days = #{retention}"
+        b << ""
+        b << "  # ── Actor Resolution ─────────────────────────────────────────────────"
+        b << "  # Proc called to resolve the current actor from the request context."
+        b << "  # Set Auditron.current_actor in a before_action in your controller."
+        b << "  # Example (ApplicationController):"
+        b << "  #   before_action :set_audit_actor"
+        b << "  #   def set_audit_actor"
+        b << "  #     Auditron.current_actor = #{@cfg[:actor_method]}"
+        b << "  #   end"
+        b << ""
+        b << "end"
+        b << ""
+        b.to_s
+      end
+
+      # =========================================================================
+      # Logo & intro
+      # =========================================================================
+
+      LOGO = <<~LOGO
+
+           █████╗ ██╗   ██╗██████╗ ██╗████████╗██████╗  ██████╗ ███╗   ██╗
+          ██╔══██╗██║   ██║██╔══██╗██║╚══██╔══╝██╔══██╗██╔═══██╗████╗  ██║
+          ███████║██║   ██║██║  ██║██║   ██║   ██████╔╝██║   ██║██╔██╗ ██║
+          ██╔══██║██║   ██║██║  ██║██║   ██║   ██╔══██╗██║   ██║██║╚██╗██║
+          ██║  ██║╚██████╔╝██████╔╝██║   ██║   ██║  ██║╚██████╔╝██║ ╚████║
+          ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
+
+                        Audit Logging for Rails  ─── v#{Auditron::VERSION}
+
+      LOGO
+
+      def print_logo
+        puts_out ""
+        LOGO.each_line { |line| $stdout.print "\e[36m#{line.chomp}\e[0m\n" }
+        puts_out ""
+        $stdout.flush
+      end
+
+      def print_intro
+        puts_out "  \e[36m#{"─" * 68}\e[0m"
+        puts_out ""
+        puts_out "  \e[37mThis wizard will:\e[0m"
+        puts_out ""
+        puts_out "    \e[32m[+]  Create the audit_logs migration\e[0m"
+        puts_out "    \e[32m[+]  Create config/initializers/auditron.rb\e[0m"
+        puts_out "    \e[32m[+]  Ask you a few quick questions to tailor the config\e[0m"
+        puts_out ""
+        puts_out "  \e[33m  All settings can be changed later by editing the initializer.\e[0m"
+        puts_out ""
+        puts_out "  \e[36m#{"─" * 68}\e[0m"
+        puts_out ""
+      end
+
+      # =========================================================================
+      # Confirm
+      # =========================================================================
 
       def confirm_install?
-        answer = ask(
-          "  Ready to install? This will create the audit_logs migration. [Y/n]:",
-          :yellow
-        ).strip.downcase
-
+        print_out "\e[33m  Ready to install Auditron? (y/n) \e[0m"
+        answer = $stdin.gets.to_s.strip.downcase
         answer == "y" || answer == "yes" || answer == ""
       end
 
-      def display_initializer_hint
-        say "  ---------------------------------------------------", :cyan
-        say ""
-        say "  Next steps:", :white
-        say ""
-        say "    1.  Run the migration:", :yellow
-        say "          rails db:migrate", :green
-        say ""
-        say "    2.  Create config/initializers/auditron.rb:", :yellow
-        say "          Auditron.configure do |config|", :green
-        say "            config.ignored_fields = %i[updated_at created_at]", :green
-        say "            config.store_ip       = false", :green
-        say "            config.retention_days = nil", :green
-        say "          end", :green
-        say ""
-        say "    3.  Set current actor in ApplicationController:", :yellow
-        say "          before_action :set_audit_actor", :green
-        say "          def set_audit_actor", :green
-        say "            Auditron.current_actor = @current_user", :green
-        say "          end", :green
-        say ""
-        say "    4.  Add auditable to your models:", :yellow
-        say "          auditable only: [:email, :role]", :green
-        say ""
-        say "    5.  Query your logs:", :yellow
-        say "          user.audit_logs", :green
-        say "          AuditLog.by(admin).action(:deleted).since(1.week.ago)", :green
-        say ""
-        say "  ---------------------------------------------------", :cyan
-        say ""
+      # =========================================================================
+      # Next steps & done
+      # =========================================================================
+
+      def print_next_steps
+        puts_out "  \e[36m#{"─" * 68}\e[0m"
+        puts_out ""
+        puts_out "  \e[37mNext steps:\e[0m"
+        puts_out ""
+        puts_out "    \e[33m1.  Run the migration:\e[0m"
+        puts_out "          \e[32mrails db:migrate\e[0m"
+        puts_out ""
+        puts_out "    \e[33m2.  Set current actor in ApplicationController:\e[0m"
+        puts_out "          \e[32mbefore_action :set_audit_actor\e[0m"
+        puts_out "          \e[32mdef set_audit_actor\e[0m"
+        puts_out "            \e[32mAuditron.current_actor = #{@cfg[:actor_method]}\e[0m"
+        puts_out "          \e[32mend\e[0m"
+        puts_out ""
+        puts_out "    \e[33m3.  Add auditable to your models:\e[0m"
+        puts_out "          \e[32mauditable only: [:email, :role]\e[0m"
+        puts_out ""
+        puts_out "    \e[33m4.  Query your logs:\e[0m"
+        puts_out "          \e[32muser.audit_logs\e[0m"
+        puts_out "          \e[32mAuditLog.by(admin).action(:deleted).since(1.week.ago)\e[0m"
+        puts_out ""
+        puts_out "  \e[36m#{"─" * 68}\e[0m"
+        puts_out ""
       end
 
-      def display_success
-        say "  [OK]  Auditron installed successfully!", :green
-        say "  [OK]  Run 'rails db:migrate' to complete setup.", :green
-        say ""
-        say "  Happy auditing!", :cyan
-        say ""
+      def print_done
+        puts_out "  \e[32m✅  Auditron installed successfully!\e[0m"
+        puts_out "  \e[32m✅  Run 'rails db:migrate' to complete setup.\e[0m"
+        puts_out ""
+        puts_out "  \e[36mHappy auditing!\e[0m"
+        puts_out ""
       end
 
       def cancel_install
-        say ""
-        say "  [CANCELLED]  Installation cancelled.", :red
-        say "  Run 'rails generate auditron:install' again when ready.", :yellow
-        say ""
+        puts_out ""
+        puts_out "  \e[31m[CANCELLED]  Installation cancelled.\e[0m"
+        puts_out "  \e[33mRun 'rails generate auditron:install' again when ready.\e[0m"
+        puts_out ""
       end
 
-      # Returns the Rails migration version bracket e.g. "[7.1]" or "[8.0]".
-      # Uses the host app's actual ActiveRecord version so the migration class
-      # always inherits from the correct base version.
+      # =========================================================================
+      # IO helpers — bypass Thor to prevent duplicate output
+      # =========================================================================
+
+      def puts_out(str = "")
+        $stdout.puts str
+        $stdout.flush
+      end
+
+      def print_out(str)
+        $stdout.print str
+        $stdout.flush
+      end
+
+      def cyan(str) = "\e[36m#{str}\e[0m"
+
+      # =========================================================================
+      # Migration version
+      # =========================================================================
+
       def migration_version
         "[#{ActiveRecord::VERSION::MAJOR}.#{ActiveRecord::VERSION::MINOR}]"
+      end
+
+      # =========================================================================
+      # Line buffer for building file content
+      # =========================================================================
+
+      class Lines
+        def initialize = (@buf = [])
+        def <<(str)    = @buf << str
+        def to_s       = @buf.join("\n") + "\n"
       end
     end
   end

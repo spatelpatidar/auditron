@@ -43,6 +43,7 @@ module Auditron
 
     def changed_fields
       value = self[:changed_fields]
+      return {} if value.nil?
       return value if value.is_a?(Hash)
       JSON.parse(value.to_s)
     rescue JSON::ParserError
