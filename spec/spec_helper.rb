@@ -3,8 +3,8 @@
 require "simplecov"
 SimpleCov.start do
   add_filter "/spec/"
-  add_filter "lib/respondo/version.rb"
-  add_filter "lib/respondo/railtie.rb"
+  add_filter 'lib/auditron/version.rb'
+  add_filter 'lib/auditron/railtie.rb'
   track_files "lib/**/*.rb"
 end
 
