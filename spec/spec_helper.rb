@@ -37,4 +37,14 @@ RSpec.configure do |config|
     Post.delete_all
     Admin.delete_all
   end
+
+  config.before(:each) do
+    Auditron.current_actor = nil
+    # if you have it, also reset config so lambdas don't leak between specs:
+    # Auditron.reset_configuration!
+  end
+
+  config.after(:each) do
+    Auditron.current_actor = nil
+  end
 end
