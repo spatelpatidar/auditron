@@ -1,7 +1,7 @@
 name: Release
 
 # Automatic: runs after the "CI" workflow finishes successfully on a push to main,
-#            then releases the version in lib/respondo/version.rb
+#            then releases the version in lib/auditron/version.rb
 #            - 3.1.0.beta1 / 3.1.0.rc1  -> GitHub "Pre-release"
 #            - 3.1.0                    -> normal (latest) release
 #            Release notes come from the matching section in CHANGELOG.md.
@@ -12,7 +12,7 @@ name: Release
 #            existing tag + release for this version and create them again.
 #            (GitHub Packages never allows re-pushing a version, so on "recreate"
 #            that step just warns and the run still succeeds.)
-# Does NOT publish to RubyGems: run `gem push respondo-X.Y.Z.gem` yourself.
+# Does NOT publish to RubyGems: run `gem push auditron-X.Y.Z.gem` yourself.
 on:
   workflow_run:
     workflows: ["CI"]          # must match the `name:` in ci.yml exactly
@@ -64,10 +64,10 @@ jobs:
         env:
           RECREATE: ${{ inputs.recreate }}
         run: |
-          version="$(ruby -r ./lib/respondo/version -e 'puts Respondo::VERSION')"
+          version="$(ruby -r ./lib/auditron/version -e 'puts Auditron::VERSION')"
           # Version string RubyGems uses for the built file name
-          gem_version="$(ruby -r ./lib/respondo/version -e 'puts Gem::Version.new(Respondo::VERSION).to_s')"
-          prerelease="$(ruby -r ./lib/respondo/version -e 'puts Gem::Version.new(Respondo::VERSION).prerelease?')"
+          gem_version="$(ruby -r ./lib/auditron/version -e 'puts Gem::Version.new(Auditron::VERSION).to_s')"
+          prerelease="$(ruby -r ./lib/auditron/version -e 'puts Gem::Version.new(Auditron::VERSION).prerelease?')"
           tag="v${version}"
 
           {
@@ -106,7 +106,7 @@ jobs:
 
       - name: Build the gem
         if: steps.plan.outputs.release == 'true'
-        run: gem build respondo.gemspec
+        run: gem build auditron.gemspec
 
       - name: Extract release notes from CHANGELOG.md
         if: steps.plan.outputs.release == 'true'
@@ -154,14 +154,14 @@ jobs:
           if [ "${PRERELEASE}" = "true" ]; then
             # Beta/rc: shown as "Pre-release", never marked as Latest
             channel_flags="--prerelease --latest=false"
-            title="respondo ${VERSION} (pre-release)"
+            title="auditron ${VERSION} (pre-release)"
           else
             # Stable: becomes the Latest release
             channel_flags="--latest"
-            title="respondo ${VERSION}"
+            title="auditron ${VERSION}"
           fi
 
-          gh release create "${TAG}" "respondo-${GEM_VERSION}.gem" \
+          gh release create "${TAG}" "auditron-${GEM_VERSION}.gem" \
             --target "${RELEASE_SHA}" \
             --title "${title}" \
             --notes-file "${RUNNER_TEMP}/release_notes.md" \
