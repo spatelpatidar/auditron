@@ -9,3 +9,8 @@
 
 # rspec failure tracking
 .rspec_status
+
+# built gems and archive of old builds (see publish.rb)
+/Gems/
+*.gem
+run_file.rb
